@@ -1,0 +1,20 @@
+# Core data analysis and manipulation
+pandas>=1.5.0
+numpy>=1.21.0
+
+# Data visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Jupyter notebook support (if running in notebook environment)
+jupyter>=1.0.0
+ipykernel>=6.0.0
+
+# Additional useful packages for data analysis
+scipy>=1.9.0
+plotly>=5.0.0
+
+# Standard library packages (no installation needed)
+# json - built-in
+# collections - built-in  
+# warnings - built-in
