@@ -6,9 +6,11 @@ Command-line interface for UDNS (Universal Data Normalization Specification).
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 from udns import UDNSProcessor, EntityType
+from udns.cleaners.config import CleaningConfig
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -35,6 +37,24 @@ Examples:
   
   # Validate against examples
   python udns_cli.py --validate-examples
+  
+  # List available cleaners
+  python udns_cli.py --list-cleaners
+  
+  # List cleaning configurations
+  python udns_cli.py --list-cleaning-configs
+  
+  # Load cleaning configuration
+  python udns_cli.py -t "some text" --load-cleaning-config my_config
+  
+  # Save cleaning configuration
+  python udns_cli.py --save-cleaning-config my_config
+  
+  # Update cleaner configuration
+  python udns_cli.py --update-cleaner-config "text_cleaner" '{"enabled": false}'
+  
+  # Update entity configuration
+  python udns_cli.py --update-entity-config "invoice" '{"confidence_threshold": 0.9}'
         """
     )
     
@@ -77,6 +97,55 @@ Examples:
         help='Disable schema validation'
     )
     parser.add_argument(
+        '--no-cleaning',
+        action='store_true',
+        help='Disable data cleaning'
+    )
+    parser.add_argument(
+        '--enable-cleaning',
+        action='store_true',
+        help='Enable data cleaning (overrides --no-cleaning)'
+    )
+    parser.add_argument(
+        '--cleaning-config',
+        type=Path,
+        help='JSON configuration file for cleaning pipeline'
+    )
+    parser.add_argument(
+        '--list-cleaners',
+        action='store_true',
+        help='List available cleaners'
+    )
+    parser.add_argument(
+        '--list-cleaning-configs',
+        action='store_true',
+        help='List available cleaning configurations'
+    )
+    parser.add_argument(
+        '--save-cleaning-config',
+        type=str,
+        help='Save current cleaning configuration with given name'
+    )
+    parser.add_argument(
+        '--load-cleaning-config',
+        type=str,
+        help='Load cleaning configuration by name'
+    )
+    parser.add_argument(
+        '--update-cleaner-config',
+        action='append',
+        nargs=2,
+        metavar=('CLEANER', 'CONFIG'),
+        help='Update cleaner configuration (can be used multiple times)'
+    )
+    parser.add_argument(
+        '--update-entity-config',
+        action='append',
+        nargs=2,
+        metavar=('ENTITY', 'CONFIG'),
+        help='Update entity configuration (can be used multiple times)'
+    )
+    parser.add_argument(
         '--confidence-threshold',
         type=float,
         default=0.0,
@@ -112,6 +181,40 @@ def log_message(message: str, quiet: bool = False, verbose: bool = False):
     """Log message to stderr if not quiet."""
     if not quiet:
         print(f"[UDNS] {message}", file=sys.stderr)
+
+
+def list_cleaners(processor: UDNSProcessor):
+    """List available cleaners."""
+    if not hasattr(processor, 'cleaning_pipeline'):
+        print("Cleaning pipeline not available", file=sys.stderr)
+        return
+    
+    # Get cleaner information from pipeline
+    cleaner_info = processor.cleaning_pipeline.get_cleaner_info()
+    print("Available Cleaners:")
+    print("=" * 30)
+    for cleaner in sorted(cleaner_info, key=lambda x: x['name']):
+        print(f"  {cleaner['name']} v{cleaner['version']}")
+        print(f"    Enabled: {'Yes' if cleaner['enabled'] else 'No'}")
+    print(f"\nTotal: {len(cleaner_info)} cleaners")
+
+
+def list_cleaning_configs(processor: UDNSProcessor):
+    """List available cleaning configurations."""
+    if not hasattr(processor, 'cleaning_pipeline'):
+        print("Cleaning pipeline not available", file=sys.stderr)
+        return
+    
+    # Get configuration summary
+    config_summary = processor.get_cleaning_config_summary()
+    print("Cleaning Configuration Summary:")
+    print("=" * 40)
+    print(f"Enabled: {'Yes' if config_summary.get('enabled') else 'No'}")
+    print(f"Pipeline Order: {', '.join(config_summary.get('pipeline_order', []))}")
+    print(f"Cleaners: {config_summary.get('cleaner_count', 0)} total, {config_summary.get('enabled_cleaners', 0)} enabled")
+    print(f"Entity Configs: {', '.join(config_summary.get('entity_configs', []))}")
+    print(f"Max Operations: {config_summary.get('max_operations', 'unlimited')}")
+    print(f"Min Confidence: {config_summary.get('min_confidence', 'none')}")
 
 
 def list_entity_types(processor: UDNSProcessor):
@@ -187,7 +290,9 @@ def process_single_text(
     text: str,
     entity_type: Optional[EntityType] = None,
     verbose: bool = False,
-    quiet: bool = False
+    quiet: bool = False,
+    enable_cleaning: Optional[bool] = None,
+    cleaning_config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Process a single text input."""
     if not quiet and verbose:
@@ -196,13 +301,29 @@ def process_single_text(
             log_message(f"Using entity type: {entity_type.value}")
         else:
             log_message("Auto-detecting entity type")
+        if enable_cleaning is not None:
+            log_message(f"Cleaning: {'enabled' if enable_cleaning else 'disabled'}")
     
-    result = processor.process(text, entity_type)
+    start_time = time.time() if verbose else None
+    result = processor.process(text, entity_type, enable_cleaning=enable_cleaning, cleaning_config=cleaning_config)
+    duration = time.time() - start_time if start_time else None
     
     if not quiet and verbose:
         log_message(f"Detected type: {result.entity_type.value}")
         log_message(f"Confidence: {result.metadata.confidence:.2f}")
         log_message(f"Attributes: {len(result.attributes)} fields")
+        
+        # Show cleaning information if available
+        if hasattr(result.metadata, 'get_cleaning_summary'):
+            cleaning_summary = result.metadata.get_cleaning_summary()
+            if cleaning_summary['enabled']:
+                log_message(f"Cleaning: {cleaning_summary['operations_count']} operations")
+                if cleaning_summary['duration_ms']:
+                    log_message(f"Cleaning duration: {cleaning_summary['duration_ms']:.2f}ms")
+                if cleaning_summary['errors_count'] > 0:
+                    log_message(f"Cleaning errors: {cleaning_summary['errors_count']}")
+                if cleaning_summary.get('pipeline_version'):
+                    log_message(f"Cleaning pipeline: v{cleaning_summary['pipeline_version']}")
     
     return result.to_dict()
 
@@ -213,7 +334,9 @@ def process_file(
     batch: bool = False,
     entity_type: Optional[EntityType] = None,
     verbose: bool = False,
-    quiet: bool = False
+    quiet: bool = False,
+    enable_cleaning: Optional[bool] = None,
+    cleaning_config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Process a file input."""
     if not file_path.exists():
@@ -232,6 +355,14 @@ def process_file(
             if not quiet:
                 log_message(f"Processing batch of {len(inputs)} inputs")
             
+            # Add cleaning configuration to each input
+            if enable_cleaning is not None or cleaning_config:
+                for input_item in inputs:
+                    if enable_cleaning is not None:
+                        input_item['enable_cleaning'] = enable_cleaning
+                    if cleaning_config:
+                        input_item['cleaning_config'] = cleaning_config
+            
             results = processor.process_batch(inputs)
             return {"batch_results": results}
             
@@ -243,7 +374,10 @@ def process_file(
         lines = [line.strip() for line in content.split('\n') if line.strip()]
         
         if len(lines) == 1:
-            return process_single_text(processor, lines[0], entity_type, verbose, quiet)
+            return process_single_text(
+                processor, lines[0], entity_type, verbose, quiet,
+                enable_cleaning, cleaning_config
+            )
         else:
             # Process multiple lines as separate inputs
             results = []
@@ -252,7 +386,10 @@ def process_file(
                     log_message(f"Processing line {i+1}/{len(lines)}")
                 
                 try:
-                    result = process_single_text(processor, line, entity_type, verbose, quiet)
+                    result = process_single_text(
+                        processor, line, entity_type, verbose, quiet,
+                        enable_cleaning, cleaning_config
+                    )
                     results.append({"success": True, "line": i+1, "result": result})
                 except Exception as e:
                     results.append({"success": False, "line": i+1, "error": str(e)})
@@ -271,6 +408,16 @@ def main():
         list_entity_types(processor)
         return 0
     
+    if args.list_cleaners:
+        processor = UDNSProcessor(enable_validation=not args.no_validation)
+        list_cleaners(processor)
+        return 0
+    
+    if args.list_cleaning_configs:
+        processor = UDNSProcessor(enable_validation=not args.no_validation)
+        list_cleaning_configs(processor)
+        return 0
+    
     if args.validate_examples:
         processor = UDNSProcessor(enable_validation=not args.no_validation)
         success = validate_examples(processor, args.quiet)
@@ -278,10 +425,68 @@ def main():
     
     # Initialize processor
     try:
-        processor = UDNSProcessor(enable_validation=not args.no_validation)
+        # Determine cleaning setting
+        enable_cleaning = False if args.no_cleaning else (True if args.enable_cleaning else None)
+        
+        # Load cleaning configuration if provided
+        cleaning_config = None
+        if args.cleaning_config:
+            if not args.cleaning_config.exists():
+                print(f"Error: Cleaning configuration file not found: {args.cleaning_config}", file=sys.stderr)
+                return 1
+            
+            try:
+                with open(args.cleaning_config, 'r', encoding='utf-8') as f:
+                    config_dict = json.load(f)
+                    cleaning_config = CleaningConfig.from_dict(config_dict)
+            except json.JSONDecodeError as e:
+                print(f"Error: Invalid JSON in cleaning configuration file: {e}", file=sys.stderr)
+                return 1
+        elif args.load_cleaning_config:
+            # Load configuration by name
+            cleaning_config = args.load_cleaning_config
+        
+        processor = UDNSProcessor(
+            enable_validation=not args.no_validation,
+            enable_cleaning=enable_cleaning,
+            cleaning_config=cleaning_config
+        )
         
         if args.confidence_threshold > 0:
             processor.set_confidence_threshold(args.confidence_threshold)
+        
+        # Handle configuration updates
+        if args.update_cleaner_config:
+            for cleaner_name, config_json in args.update_cleaner_config:
+                try:
+                    config_dict = json.loads(config_json)
+                    processor.update_cleaner_config(cleaner_name, **config_dict)
+                except json.JSONDecodeError:
+                    print(f"Error: Invalid JSON in cleaner config for {cleaner_name}", file=sys.stderr)
+                    return 1
+        
+        if args.update_entity_config:
+            for entity_type, config_json in args.update_entity_config:
+                try:
+                    config_dict = json.loads(config_json)
+                    processor.update_entity_config(entity_type, **config_dict)
+                except json.JSONDecodeError:
+                    print(f"Error: Invalid JSON in entity config for {entity_type}", file=sys.stderr)
+                    return 1
+        
+        # Save configuration if requested
+        if args.save_cleaning_config:
+            try:
+                if cleaning_config:
+                    processor.cleaning_pipeline.save_config(args.save_cleaning_config)
+                    if not args.quiet:
+                        log_message(f"Cleaning configuration saved as '{args.save_cleaning_config}'")
+                else:
+                    print("Error: No cleaning configuration to save", file=sys.stderr)
+                    return 1
+            except Exception as e:
+                print(f"Error saving cleaning configuration: {e}", file=sys.stderr)
+                return 1
     
     except Exception as e:
         print(f"Error initializing processor: {e}", file=sys.stderr)
@@ -292,15 +497,20 @@ def main():
     if args.type:
         entity_type = EntityType(args.type)
     
+    
     # Process input
     try:
         if args.text:
             result = process_single_text(
-                processor, args.text, entity_type, args.verbose, args.quiet
+                processor, args.text, entity_type, args.verbose, args.quiet,
+                enable_cleaning=enable_cleaning,
+                cleaning_config=cleaning_config.to_dict() if cleaning_config else None
             )
         elif args.file:
             result = process_file(
-                processor, args.file, args.batch, entity_type, args.verbose, args.quiet
+                processor, args.file, args.batch, entity_type, args.verbose, args.quiet,
+                enable_cleaning=enable_cleaning,
+                cleaning_config=cleaning_config.to_dict() if cleaning_config else None
             )
         else:
             parser.error("No input specified")

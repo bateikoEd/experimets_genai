@@ -16,7 +16,7 @@ class TestUDNSImplementation(unittest.TestCase):
         self.processor = UDNSProcessor(enable_validation=False)  # Disable validation for now due to missing jsonschema
         
         # Load test examples from temp.json
-        with open('../data/temp.json', 'r') as f:
+        with open('data/temp.json', 'r') as f:
             self.test_data = json.load(f)
     
     def test_invoice_parsing(self):

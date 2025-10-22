@@ -38,11 +38,51 @@ class Metadata:
     heuristics: Optional[List[str]] = field(default_factory=list)
     conversions: Optional[Dict[str, float]] = field(default_factory=dict)
     precision: Optional[int] = None
+    cleaning_enabled: Optional[bool] = None
+    
+    # Cleaning metadata
+    cleaning_enabled: Optional[bool] = None
+    cleaning_pipeline_version: Optional[str] = None
+    cleaning_operations: Optional[List[str]] = field(default_factory=list)
+    cleaning_stats: Optional[Dict[str, Any]] = field(default_factory=dict)
+    cleaning_errors: Optional[List[str]] = field(default_factory=list)
+    cleaning_duration_ms: Optional[float] = None
     
     def __post_init__(self):
         """Validate confidence score."""
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError("Confidence must be between 0.0 and 1.0")
+    
+    def add_cleaning_operation(self, operation: str):
+        """Add a cleaning operation to metadata."""
+        if self.cleaning_operations is None:
+            self.cleaning_operations = []
+        self.cleaning_operations.append(operation)
+    
+    def add_cleaning_error(self, error: str):
+        """Add a cleaning error to metadata."""
+        if self.cleaning_errors is None:
+            self.cleaning_errors = []
+        self.cleaning_errors.append(error)
+    
+    def set_cleaning_stats(self, stats: Dict[str, Any]):
+        """Set cleaning statistics."""
+        self.cleaning_stats = stats
+    
+    def set_cleaning_duration(self, duration_ms: float):
+        """Set cleaning duration in milliseconds."""
+        self.cleaning_duration_ms = duration_ms
+    
+    def get_cleaning_summary(self) -> Dict[str, Any]:
+        """Get a summary of cleaning metadata."""
+        return {
+            'enabled': self.cleaning_enabled,
+            'pipeline_version': self.cleaning_pipeline_version,
+            'operations_count': len(self.cleaning_operations) if self.cleaning_operations else 0,
+            'errors_count': len(self.cleaning_errors) if self.cleaning_errors else 0,
+            'duration_ms': self.cleaning_duration_ms,
+            'has_stats': bool(self.cleaning_stats)
+        }
 
 
 @dataclass

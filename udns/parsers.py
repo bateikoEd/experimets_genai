@@ -337,7 +337,7 @@ class ProductParser(DomainParser):
         
         metadata = Metadata(
             confidence=confidence,
-            tokenization="regex_key_value"
+            schema="regex_key_value"
         )
         
         return NormalizedEntity(
