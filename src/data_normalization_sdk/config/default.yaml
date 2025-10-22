@@ -1,0 +1,161 @@
+# Default configuration for the Data Normalization SDK
+#
+# This file contains default settings for extraction, normalization, and validation.
+# You can override these settings by providing a custom configuration file or 
+# programmatically when initializing the SDK.
+
+# Global SDK settings
+sdk:
+  version: "0.1.0"
+  debug: false
+  log_level: "INFO"
+  
+# Confidence thresholds for processing stages
+confidence:
+  # Minimum confidence for extraction to be considered successful
+  extraction_threshold: 0.6
+  
+  # Minimum confidence for normalization to be considered successful  
+  normalization_threshold: 0.7
+  
+  # Minimum confidence for overall entity to pass validation
+  entity_threshold: 0.8
+  
+  # Per-entity-type confidence thresholds (overrides defaults above)
+  entity_specific:
+    invoice: 0.85  # Higher threshold for financial data
+    payment: 0.85  # Higher threshold for financial data
+    address: 0.75  # Medium threshold for address parsing
+    contact: 0.8   # High threshold for contact info
+    
+# Extractor configuration
+extractors:
+  # Enable/disable specific extractors
+  enabled:
+    invoice: true
+    address: true
+    contact: true
+    product: true
+    order: true
+    log_event: true
+    event: true
+    payment: true
+    spec: true
+    person: true
+    
+  # Extractor-specific settings
+  invoice:
+    date_formats: ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"]
+    currency_symbols: ["$", "€", "£", "¥", "₹"]
+    
+  address:
+    country_detection: true
+    postal_code_validation: true
+    
+  contact:
+    phone_country_inference: true
+    email_obfuscation_patterns: ["[at]", " at ", "(at)"]
+    
+  product:
+    price_extraction: true
+    weight_normalization: true
+    category_parsing: true
+    
+  order:
+    line_item_parsing: true
+    date_validation: true
+    quantity_extraction: true
+    
+  log_event:
+    timestamp_formats: ["YYYY/MM/DD HH:mm:ss", "YYYY-MM-DDTHH:mm:ss"]
+    
+  event:
+    timezone_support: true
+    duration_calculation: true
+    
+  payment:
+    currency_validation: true
+    minor_unit_calculation: true
+    
+  spec:
+    dimension_conversion: true
+    weight_conversion: true
+    
+  person:
+    unicode_normalization: true
+    phone_normalization: true
+    
+# Normalizer configuration  
+normalizers:
+  # Date normalization settings
+  dates:
+    output_format: "iso8601"  # ISO 8601 format
+    timezone_handling: "preserve"  # preserve, convert_to_utc, local
+    ambiguous_date_preference: "dmy"  # dmy, mdy, ymd for DD/MM vs MM/DD
+    
+  # Currency normalization settings
+  currencies:
+    default_currency: "USD"
+    minor_unit_calculation: true
+    exchange_rate_source: null  # Future: API for currency conversion
+    
+  # Phone number normalization settings
+  phones:
+    output_format: "e164"  # E.164 international format
+    extension_separator: "x"
+    country_code_inference: true
+    
+  # Address normalization settings
+  addresses:
+    country_code_format: "alpha3"  # alpha2, alpha3, numeric
+    postal_code_validation: true
+    standardize_abbreviations: true
+    
+  # Text normalization settings
+  text:
+    unicode_normalization: "NFKD"  # Unicode normalization form
+    transliteration: true
+    preserve_original: true
+    
+# Validator configuration
+validators:
+  # Schema validation settings
+  schema:
+    strict_mode: false  # Fail on unknown fields
+    required_field_enforcement: true
+    
+  # Standards compliance validation
+  standards:
+    iso_8601_dates: true
+    iso_4217_currencies: true  
+    e164_phones: true
+    iso_3166_countries: true
+    
+  # Cross-field validation rules
+  cross_field:
+    temporal_consistency: true  # start_date < end_date
+    currency_amount_consistency: true  # currency matches region
+    
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Log sensitive data (be careful in production)
+  log_extracted_data: false
+  log_normalized_data: false
+  
+  # Performance logging
+  log_processing_times: true
+  log_confidence_scores: true
+  
+# Performance settings
+performance:
+  # Enable caching of compiled regex patterns
+  cache_patterns: true
+  
+  # Maximum text length to process (characters)
+  max_text_length: 10000
+  
+  # Timeout for processing single text input (seconds)
+  processing_timeout: 30.0
