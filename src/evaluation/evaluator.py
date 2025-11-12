@@ -27,18 +27,12 @@ class ModelEvaluator:
         self.feature_names = feature_names
         
     def calculate_regression_metrics(self, 
+ 
+
                                    y_true: np.ndarray, 
                                    y_pred: np.ndarray) -> Dict[str, float]:
-        """
-        Calculate comprehensive regression metrics.
         
-        Args:
-            y_true: True target values
-            y_pred: Predicted target values
-            
-        Returns:
-            Dictionary with calculated metrics
-        """
+        
         # Basic error calculations
         mse = np.mean((y_true - y_pred) ** 2)
         mae = np.mean(np.abs(y_true - y_pred))
